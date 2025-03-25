@@ -33,6 +33,16 @@ now_str = datetime.now().strftime("%Y%m%d_%H%M")
 name_clean = product_name.replace(" ", "_").replace("/", "-")
 file_prefix = f"baleni_{name_clean}_{best['Varianta']}_retail{best['Celkem krabiček']}_{now_str}"
 
+# Dummy dataframe fallback
+if 'df_result' not in locals():
+    df_result = pd.DataFrame({
+        "Varianta": [],
+        "Rozměry retail boxu": [],
+        "Rozložení počtu": [],
+        "Celkem krabiček": [],
+        "Odhadovaná cena": []
+    })
+
 # Excel export
 if st.sidebar.button("Exportovat výsledky do Excelu"):
     if best['Varianta'] == 'N/A':
@@ -40,7 +50,7 @@ if st.sidebar.button("Exportovat výsledky do Excelu"):
         scroll_to_top()
     else:
         excel_buffer = BytesIO()
-        export_df = pd.DataFrame()  # fallback if df_result is not defined
+        export_df = df_result.drop(columns=["Rozměry retail boxu", "Rozložení počtu"], errors='ignore')
         with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
             export_df.to_excel(writer, sheet_name="Varianty balení", index=False)
             summary_data = pd.DataFrame({
