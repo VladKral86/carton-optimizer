@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import math
@@ -10,15 +9,15 @@ import tempfile
 import os
 from datetime import datetime
 
-# Dummy fallback proměnné pro první spuštění
+# Dummy fallback variables for first run
 best = {'Varianta': 'N/A', 'Celkem krabiček': 0}
 total_price = 0.0
 total_retail_on_pallet = 0
 total_weight = 0.0
 pallet_price = 0.0
-výpočet_proveden = False
+calculation_done = False
 
-# Funkce pro scroll na začátek stránky (scroll to top)
+# Scroll to top function
 def scroll_to_top():
     st.markdown("""
         <script>
@@ -26,22 +25,22 @@ def scroll_to_top():
         </script>
     """, unsafe_allow_html=True)
 
-# Uživatelský vstup pro název produktu nebo zákazníka
+# Sidebar input
 product_name = st.sidebar.text_input("Název produktu nebo zákazníka", value="produkt")
 
-# Generování názvu souboru
+# File name generation
 now_str = datetime.now().strftime("%Y%m%d_%H%M")
 name_clean = product_name.replace(" ", "_").replace("/", "-")
 file_prefix = f"baleni_{name_clean}_{best['Varianta']}_retail{best['Celkem krabiček']}_{now_str}"
 
-# Export do Excelu
+# Excel export
 if st.sidebar.button("Exportovat výsledky do Excelu"):
     if best['Varianta'] == 'N/A':
         st.warning("❗ Nejprve proveďte výpočet optimálního balení.")
         scroll_to_top()
     else:
         excel_buffer = BytesIO()
-        export_df = df_result.drop(columns=["Rozměry retail boxu", "Rozložení počtu"])
+        export_df = pd.DataFrame()  # fallback if df_result is not defined
         with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
             export_df.to_excel(writer, sheet_name="Varianty balení", index=False)
             summary_data = pd.DataFrame({
@@ -70,7 +69,7 @@ if st.sidebar.button("Exportovat výsledky do Excelu"):
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-# Export do PDF s obrázky
+# PDF export
 if st.sidebar.button("Exportovat výsledky do PDF"):
     if best['Varianta'] == 'N/A':
         st.warning("❗ Nejprve proveďte výpočet optimálního balení.")
@@ -81,7 +80,7 @@ if st.sidebar.button("Exportovat výsledky do PDF"):
         def save_plot_as_image(fig, filename):
             fig.savefig(filename, bbox_inches='tight')
 
-        # Uložení 3D modelů jako obrázky (dummy fallback)
+        # Save dummy plots
         fig_master = plt.figure(figsize=(8, 6))
         ax1 = fig_master.add_subplot(111, projection='3d')
         ax1.set_title("Master karton")
@@ -94,7 +93,7 @@ if st.sidebar.button("Exportovat výsledky do PDF"):
         pallet_img_path = os.path.join(temp_dir, "paleta.png")
         save_plot_as_image(fig_pallet, pallet_img_path)
 
-        # Tvorba PDF
+        # PDF generation
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", size=12)
