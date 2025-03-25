@@ -43,95 +43,77 @@ if 'df_result' not in locals():
         "Odhadovaná cena": []
     })
 
-# Excel export
-if st.sidebar.button("Exportovat výsledky do Excelu"):
-    if best['Varianta'] == 'N/A':
-        st.warning("❗ Nejprve proveďte výpočet optimálního balení.")
-        scroll_to_top()
+# MAIN SECTION – Výpočet a rozvržení
+st.title("🧮 Optimalizace balení")
+st.markdown("Zadej rozměry retail balení, master kartonu a palety. Aplikace najde nejlepší uspořádání a rozvržení na paletu.")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    retail_width = st.number_input("Šířka retail krabičky (mm)", min_value=1, value=130)
+    retail_depth = st.number_input("Hloubka retail krabičky (mm)", min_value=1, value=40)
+    retail_height = st.number_input("Výška retail krabičky (mm)", min_value=1, value=194)
+    master_weight = st.number_input("Hmotnost 1 master kartonu (kg)", min_value=0.1, value=7.0, step=0.1)
+    master_price = st.number_input("Cena za 1 master karton (Kč)", min_value=0.0, value=89.0, step=1.0)
+
+with col2:
+    master_width = st.number_input("Šířka master kartonu (mm)", min_value=1, value=600)
+    master_depth = st.number_input("Hloubka master kartonu (mm)", min_value=1, value=400)
+    master_height = st.number_input("Výška master kartonu (mm)", min_value=1, value=300)
+    pallet_width = st.number_input("Max. šířka palety (mm)", min_value=1, value=1200)
+    pallet_depth = st.number_input("Max. hloubka palety (mm)", min_value=1, value=800)
+    pallet_height = st.number_input("Max. výška palety (mm)", min_value=1, value=1800)
+
+if st.button("Spustit výpočet"):
+    calculation_done = True
+    options = []
+    index = 0
+    for x in range(1, master_width // retail_width + 1):
+        for y in range(1, master_depth // retail_depth + 1):
+            for z in range(1, master_height // retail_height + 1):
+                if x * retail_width <= master_width and y * retail_depth <= master_depth and z * retail_height <= master_height:
+                    count = x * y * z
+                    options.append({
+                        "Varianta": f"V{index+1}",
+                        "Rozměry retail boxu": f"{retail_width}x{retail_depth}x{retail_height}",
+                        "Rozložení počtu": f"{x}x{y}x{z}",
+                        "Celkem krabiček": count,
+                        "Odhadovaná cena": count * 0.3,
+                        "Rozměr": (x * retail_width, y * retail_depth, z * retail_height)
+                    })
+                    index += 1
+
+    if options:
+        df_result = pd.DataFrame(options)
+        df_result = df_result.sort_values(by="Celkem krabiček", ascending=False)
+        best = df_result.iloc[0]
+
+        master_per_layer = (pallet_width // master_width) * (pallet_depth // master_depth)
+        layers_on_pallet = pallet_height // master_height
+        total_on_pallet = master_per_layer * layers_on_pallet
+
+        total_retail_on_pallet = int(best['Celkem krabiček']) * total_on_pallet
+        total_weight = master_weight * total_on_pallet
+        pallet_price = master_price * total_on_pallet
+
+        st.success(f"Nejlepší varianta: {best['Varianta']} – {best['Celkem krabiček']} krabiček / karton")
+        st.info(f"Na paletu se vejde {total_on_pallet} master kartonů → {total_retail_on_pallet} retail krabiček")
+        st.dataframe(df_result.reset_index(drop=True))
+
+        # 3D náhled (jen horní vrstva)
+        fig = plt.figure(figsize=(6, 6))
+        ax = fig.add_subplot(111, projection='3d')
+        ax.set_title("Rozložení master kartonů na paletě (1 vrstva)")
+
+        for i in range(pallet_width // master_width):
+            for j in range(pallet_depth // master_depth):
+                x, y, z = i * master_width, j * master_depth, 0
+                dx, dy, dz = master_width, master_depth, master_height
+                ax.bar3d(x, y, z, dx, dy, dz, shade=True, alpha=0.6)
+
+        ax.set_xlim(0, pallet_width)
+        ax.set_ylim(0, pallet_depth)
+        ax.set_zlim(0, master_height)
+        st.pyplot(fig)
     else:
-        excel_buffer = BytesIO()
-        export_df = df_result.drop(columns=["Rozměry retail boxu", "Rozložení počtu"], errors='ignore')
-        with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-            export_df.to_excel(writer, sheet_name="Varianty balení", index=False)
-            summary_data = pd.DataFrame({
-                "Parametr": [
-                    "Nejlepší varianta",
-                    "Retail krabiček v master kartonu",
-                    "Cena za 1 master karton (Kč)",
-                    "Retail krabiček na paletě",
-                    "Hmotnost palety (kg)",
-                    "Hodnota palety (Kč)"
-                ],
-                "Hodnota": [
-                    best['Varianta'],
-                    best['Celkem krabiček'],
-                    f"{total_price:.2f}",
-                    total_retail_on_pallet,
-                    f"{total_weight:.2f}",
-                    f"{pallet_price:.2f}"
-                ]
-            })
-            summary_data.to_excel(writer, sheet_name="Souhrn logistika", index=False)
-        st.download_button(
-            label="📥 Stáhnout Excel",
-            data=excel_buffer.getvalue(),
-            file_name=f"{file_prefix}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-# PDF export
-if st.sidebar.button("Exportovat výsledky do PDF"):
-    if best['Varianta'] == 'N/A':
-        st.warning("❗ Nejprve proveďte výpočet optimálního balení.")
-        scroll_to_top()
-    else:
-        temp_dir = tempfile.mkdtemp()
-
-        def save_plot_as_image(fig, filename):
-            fig.savefig(filename, bbox_inches='tight')
-
-        # Save dummy plots
-        fig_master = plt.figure(figsize=(8, 6))
-        ax1 = fig_master.add_subplot(111, projection='3d')
-        ax1.set_title("Master karton")
-        master_img_path = os.path.join(temp_dir, "master_karton.png")
-        save_plot_as_image(fig_master, master_img_path)
-
-        fig_pallet = plt.figure(figsize=(8, 6))
-        ax2 = fig_pallet.add_subplot(111, projection='3d')
-        ax2.set_title("Paleta")
-        pallet_img_path = os.path.join(temp_dir, "paleta.png")
-        save_plot_as_image(fig_pallet, pallet_img_path)
-
-        # PDF generation
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        pdf.cell(200, 10, txt="Optimalizace balení - Souhrn", ln=True, align='C')
-        pdf.ln(10)
-
-        rows = [
-            ("Produkt / zákazník", product_name),
-            ("Nejlepší varianta", best['Varianta']),
-            ("Retail krabiček v master kartonu", best['Celkem krabiček']),
-            ("Cena za 1 master karton (Kč)", f"{total_price:.2f}"),
-            ("Retail krabiček na paletě", total_retail_on_pallet),
-            ("Hmotnost palety (kg)", f"{total_weight:.2f}"),
-            ("Hodnota palety (Kč)", f"{pallet_price:.2f}")
-        ]
-        for param, val in rows:
-            pdf.cell(0, 10, f"{param}: {val}", ln=True)
-
-        pdf.ln(5)
-        pdf.image(master_img_path, w=170)
-        pdf.ln(5)
-        pdf.image(pallet_img_path, w=170)
-
-        pdf_buffer = BytesIO()
-        pdf.output(pdf_buffer)
-        st.download_button(
-            label="📄 Stáhnout PDF",
-            data=pdf_buffer.getvalue(),
-            file_name=f"{file_prefix}.pdf",
-            mime="application/pdf"
-        )
+        st.error("Retail balení je větší než master karton – nelze vložit.")
