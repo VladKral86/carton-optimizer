@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from itertools import product, combinations
 from datetime import datetime
+from fpdf import FPDF
+from io import BytesIO
 
 # Constants
 LANGUAGES = ["Čeština", "English"]
@@ -33,6 +35,7 @@ T = {
         "show_unused": "Zobrazit nevyužitý prostor",
         "layout_box": "Rozložení retail balení v master kartonu",
         "layout_pallet": "Rozložení master kartonů na paletě",
+        "export_pdf": "📄 Exportovat výstup do PDF",
         "error": "Retail balení je větší než master karton – nelze vložit."
     },
     "English": {
@@ -56,6 +59,7 @@ T = {
         "show_unused": "Show unused space",
         "layout_box": "Retail layout inside master carton",
         "layout_pallet": "Master cartons layout on pallet",
+        "export_pdf": "📄 Export results to PDF",
         "error": "Retail box is larger than master carton – cannot fit."
     }
 }
@@ -132,28 +136,19 @@ def draw_boxes_in_master_carton(retail_size, layout_xyz, show_empty=True):
     ax.set_zlabel("Výška")
     return fig
 
-def draw_cartons_on_pallet(pallet_size, carton_size, layer_count):
-    pw, pd, ph = pallet_size
-    cw, cd, ch = carton_size
-    fig = plt.figure(figsize=(8, 5))
-    ax = fig.add_subplot(111, projection='3d')
-    cartons_per_row = pw // cw
-    cartons_per_col = pd // cd
-    for layer in range(layer_count):
-        for i in range(cartons_per_row):
-            for j in range(cartons_per_col):
-                x = i * cw
-                y = j * cd
-                z = layer * ch
-                ax.bar3d(x, y, z, cw, cd, ch, color='orange', edgecolor='k', alpha=0.8)
-    ax.plot([0, pw, pw, 0, 0], [0, 0, pd, pd, 0], [0, 0, 0, 0, 0], color='red', linewidth=2)
-    ax.set_xlim(0, pw)
-    ax.set_ylim(0, pd)
-    ax.set_zlim(0, ph)
-    ax.set_xlabel("Šířka")
-    ax.set_ylabel("Hloubka")
-    ax.set_zlabel("Výška")
-    return fig
+def export_to_pdf(product_name, best_variant, retail_count, master_count):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="Výsledek optimalizace balení", ln=True, align="C")
+    pdf.ln(10)
+    pdf.cell(200, 10, txt=f"Produkt: {product_name}", ln=True)
+    pdf.cell(200, 10, txt=f"Varianta: {best_variant}", ln=True)
+    pdf.cell(200, 10, txt=f"Retail balení celkem: {retail_count}", ln=True)
+    pdf.cell(200, 10, txt=f"Master kartonů na paletu: {master_count}", ln=True)
+    buffer = BytesIO()
+    pdf.output(buffer)
+    return buffer
 
 if st.button(L["run"]):
     df_result = pd.DataFrame(generate_packing_options(retail_width, retail_depth, retail_height, master_width, master_depth, master_height))
@@ -170,16 +165,17 @@ if st.button(L["run"]):
         fig1 = draw_boxes_in_master_carton((retail_width, retail_depth, retail_height), layout_xyz, show_unused)
         st.pyplot(fig1)
 
-        st.subheader(L["layout_pallet"])
         master_per_layer = (pallet_width // master_width) * (pallet_depth // master_depth)
         layers_on_pallet = pallet_height // master_height
         total_on_pallet = master_per_layer * layers_on_pallet
         total_retail_on_pallet = int(best['Celkem krabiček']) * total_on_pallet
+
+        st.subheader(L["layout_pallet"])
         st.info(L["pallet_summary"].format(m=total_on_pallet, r=total_retail_on_pallet))
 
-        fig2 = draw_cartons_on_pallet((pallet_width, pallet_depth, pallet_height),
-                                      (master_width, master_depth, master_height),
-                                      layers_on_pallet)
-        st.pyplot(fig2)
+        if st.button(L["export_pdf"]):
+            pdf_buffer = export_to_pdf(product_name, best["Varianta"], total_retail_on_pallet, total_on_pallet)
+            st.download_button(label="📥 Stáhnout PDF", data=pdf_buffer, file_name="baleni_vystup.pdf")
+
     else:
         st.error(L["error"])
