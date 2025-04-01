@@ -1,20 +1,27 @@
-
 import streamlit as st
 import pandas as pd
+import math
 import matplotlib.pyplot as plt
-import numpy as np
-from itertools import product, combinations
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from io import BytesIO
+from fpdf import FPDF
+import tempfile
+import os
+from datetime import datetime
+import sys
 
-# Jazykové přepínání
+# Constants
 LANGUAGES = ["Čeština", "English"]
 DEFAULT_LANG = LANGUAGES[0]
-lang = st.sidebar.selectbox("Jazyk / Language", LANGUAGES)
 
-# Texty dle zvoleného jazyka
+# Language toggle
+lang = st.sidebar.selectbox("🌐 Jazyk / Language", LANGUAGES)
+
+# Language dictionary
 T = {
     "Čeština": {
-        "title": "Optimalizace balení",
-        "description": "Zadej rozměry retail balení, master kartonu a palety.",
+        "title": "🧮 Optimalizace balení",
+        "description": "Zadej rozměry retail balení, master kartonu a palety. Aplikace najde nejlepší uspořádání a rozvržení na paletu.",
         "product": "Název produktu nebo zákazníka",
         "retail_w": "Šířka retail krabičky (mm)",
         "retail_d": "Hloubka retail krabičky (mm)",
@@ -26,18 +33,18 @@ T = {
         "pallet_w": "Max. šířka palety (mm)",
         "pallet_d": "Max. hloubka palety (mm)",
         "pallet_h": "Max. výška palety (mm)",
+        "weight": "Hmotnost 1 master kartonu (kg)",
+        "price": "Cena za 1 master karton (Kč)",
         "run": "Spustit výpočet",
-        "reset": "Nový výpočet",
+        "reset": "🔄 Nový výpočet",
         "best": "Nejlepší varianta",
         "pallet_summary": "Na paletu se vejde {m} master kartonů → {r} retail krabiček",
-        "show_unused": "Zobrazit nevyužitý prostor",
-        "layout_box": "Retail balení v kartonu",
-        "layout_pallet": "Master kartony na paletě",
-        "error": "Retail balení je větší než master karton – nelze vložit."
+        "error": "Retail balení je větší než master karton – nelze vložit.",
+        "viz_title": "Rozložení master kartonů na paletě (1 vrstva)"
     },
     "English": {
-        "title": "Packaging Optimization",
-        "description": "Enter dimensions of retail, master carton and pallet.",
+        "title": "🧮 Packaging Optimization",
+        "description": "Enter retail box, master carton and pallet dimensions. The app will find the optimal configuration and pallet layout.",
         "product": "Product or customer name",
         "retail_w": "Retail box width (mm)",
         "retail_d": "Retail box depth (mm)",
@@ -49,24 +56,31 @@ T = {
         "pallet_w": "Max pallet width (mm)",
         "pallet_d": "Max pallet depth (mm)",
         "pallet_h": "Max pallet height (mm)",
+        "weight": "Weight of 1 master carton (kg)",
+        "price": "Price per 1 master carton (CZK)",
         "run": "Run calculation",
-        "reset": "New calculation",
+        "reset": "🔄 New calculation",
         "best": "Best variant",
         "pallet_summary": "Pallet fits {m} master cartons → {r} retail boxes",
-        "show_unused": "Show unused space",
-        "layout_box": "Retail layout inside carton",
-        "layout_pallet": "Master cartons layout on pallet",
-        "error": "Retail box is larger than master carton – cannot fit."
+        "error": "Retail box is larger than master carton – cannot fit.",
+        "viz_title": "Master carton layout on pallet (1 layer)"
     }
 }
 
 L = T.get(lang, T[DEFAULT_LANG])
+
 product_name = st.sidebar.text_input(L["product"], value="produkt")
 
+now_str = datetime.now().strftime("%Y%m%d_%H%M")
+name_clean = product_name.replace(" ", "_").replace("/", "-")
+file_prefix = f"baleni_{name_clean}_{now_str}"
+
 st.title(L["title"])
-if st.button(L["reset"]):
-    st.cache_data.clear()
-    st.rerun()
+col_reset = st.columns([8, 2])[1]
+with col_reset:
+    if st.button(L["reset"]):
+        st.cache_data.clear()
+        st.rerun()
 
 st.markdown(L["description"])
 
@@ -86,72 +100,61 @@ with col2:
     pallet_depth = st.number_input(L["pallet_d"], min_value=1, value=800)
     pallet_height = st.number_input(L["pallet_h"], min_value=1, value=1800)
 
-show_unused = st.checkbox(L["show_unused"], value=True)
+def generate_packing_options(rw, rd, rh, mw, md, mh):
+    options = []
+    index = 0
+    for x in range(1, mw // rw + 1):
+        for y in range(1, md // rd + 1):
+            for z in range(1, mh // rh + 1):
+                if x * rw <= mw and y * rd <= md and z * rh <= mh:
+                    count = x * y * z
+                    options.append({
+                        "Varianta": f"V{index+1}",
+                        "Rozměry retail boxu": f"{rw}x{rd}x{rh}",
+                        "Rozložení počtu": f"{x}x{y}x{z}",
+                        "Celkem krabiček": count
+                    })
+                    index += 1
+    return options
 
-if "best_result" not in st.session_state:
-    st.session_state.best_result = None
-    st.session_state.layout = None
+def draw_3d_layer(width, depth, count_x, count_y):
+    fig = plt.figure(figsize=(6, 4))
+    ax = fig.add_subplot(111, projection='3d')
+    for i in range(count_x):
+        for j in range(count_y):
+            x = i * width
+            y = j * depth
+            z = 0
+            dx, dy, dz = width, depth, 1
+            ax.bar3d(x, y, z, dx, dy, dz, shade=True, alpha=0.6)
+    ax.set_title(L["viz_title"])
+    ax.set_xlabel("Šířka")
+    ax.set_ylabel("Hloubka")
+    ax.set_zlabel("Výška")
+    return fig
 
 if st.button(L["run"]):
-    options = []
-    for x in range(1, master_width // retail_width + 1):
-        for y in range(1, master_depth // retail_depth + 1):
-            for z in range(1, master_height // retail_height + 1):
-                if x * retail_width <= master_width and y * retail_depth <= master_depth and z * retail_height <= master_height:
-                    count = x * y * z
-                    options.append({"Rozložení počtu": f"{x}x{y}x{z}", "Celkem krabiček": count})
+    df_result = pd.DataFrame(generate_packing_options(retail_width, retail_depth, retail_height, master_width, master_depth, master_height))
 
-    df = pd.DataFrame(options).sort_values(by="Celkem krabiček", ascending=False)
-    if not df.empty:
-        best = df.iloc[0]
-        st.session_state.best_result = best
-        st.session_state.layout = tuple(map(int, best["Rozložení počtu"].split("x")))
-        st.success(f"{L['best']}: {best['Rozložení počtu']} → {best['Celkem krabiček']} ks")
-        st.dataframe(df.reset_index(drop=True))
+    if not df_result.empty:
+        df_result = df_result.sort_values(by="Celkem krabiček", ascending=False).reset_index(drop=True)
+        best = df_result.iloc[0].to_dict()
+        computed_master_weight = (best['Celkem krabiček'] * retail_weight) / 1000
+
+        master_per_layer = (pallet_width // master_width) * (pallet_depth // master_depth)
+        layers_on_pallet = pallet_height // master_height
+        total_on_pallet = master_per_layer * layers_on_pallet
+
+        total_retail_on_pallet = int(best['Celkem krabiček']) * total_on_pallet
+        total_weight = computed_master_weight * total_on_pallet
+
+        st.success(f"{L['best']}: {best['Varianta']} – {best['Celkem krabiček']} ks / master karton")
+        st.info(L["pallet_summary"].format(m=total_on_pallet, r=total_retail_on_pallet))
+        st.dataframe(df_result)
+
+        counts = list(map(int, best["Rozložení počtu"].split("x")))
+        fig = draw_3d_layer(master_width, master_depth, counts[0], counts[1])
+        st.pyplot(fig)
+
     else:
         st.error(L["error"])
-
-if st.session_state.best_result:
-    st.subheader(L["layout_box"])
-    nx, ny, nz = st.session_state.layout
-    fig1 = plt.figure(figsize=(7, 5))
-    ax1 = fig1.add_subplot(111, projection='3d')
-    for x in range(nx):
-        for y in range(ny):
-            for z in range(nz):
-                ax1.bar3d(x*retail_width, y*retail_depth, z*retail_height, retail_width, retail_depth, retail_height, color='skyblue', edgecolor='k', alpha=0.9)
-    if show_unused:
-        w, d, h = retail_width*nx, retail_depth*ny, retail_height*nz
-        r = [[0, w], [0, d], [0, h]]
-        for s, e in combinations(np.array(list(product(*r))), 2):
-            if np.sum(np.abs(s - e) == np.array([w, d, h])) == 1:
-                ax1.plot3D(*zip(s, e), color="gray", linewidth=1.2, alpha=0.5)
-    ax1.set_xlim(0, retail_width*nx)
-    ax1.set_ylim(0, retail_depth*ny)
-    ax1.set_zlim(0, retail_height*nz)
-    ax1.set_xlabel("Šířka")
-    ax1.set_ylabel("Hloubka")
-    ax1.set_zlabel("Výška")
-    st.pyplot(fig1)
-
-    st.subheader(L["layout_pallet"])
-    fig2 = plt.figure(figsize=(8, 5))
-    ax2 = fig2.add_subplot(111, projection='3d')
-    per_row = pallet_width // master_width
-    per_col = pallet_depth // master_depth
-    layers = pallet_height // master_height
-    for z in range(layers):
-        for x in range(per_row):
-            for y in range(per_col):
-                ax2.bar3d(x*master_width, y*master_depth, z*master_height, master_width, master_depth, master_height, color='orange', edgecolor='k', alpha=0.8)
-    ax2.set_xlim(0, pallet_width)
-    ax2.set_ylim(0, pallet_depth)
-    ax2.set_zlim(0, pallet_height)
-    ax2.set_xlabel("Šířka")
-    ax2.set_ylabel("Hloubka")
-    ax2.set_zlabel("Výška")
-    st.pyplot(fig2)
-
-    total_master = per_row * per_col * layers
-    total_retail = total_master * st.session_state.best_result["Celkem krabiček"]
-    st.info(L["pallet_summary"].format(m=total_master, r=total_retail))
