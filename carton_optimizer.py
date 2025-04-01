@@ -5,10 +5,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from itertools import product, combinations
 
+# Jazykové přepínání
 LANGUAGES = ["Čeština", "English"]
 DEFAULT_LANG = LANGUAGES[0]
 lang = st.sidebar.selectbox("Jazyk / Language", LANGUAGES)
 
+# Texty dle zvoleného jazyka
 T = {
     "Čeština": {
         "title": "Optimalizace balení",
