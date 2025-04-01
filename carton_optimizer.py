@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import math
@@ -117,7 +118,7 @@ def generate_packing_options(rw, rd, rh, mw, md, mh):
                     index += 1
     return options
 
-def draw_3d_layer(width, depth, count_x, count_y):
+def draw_3d_layer(width, depth, count_x, count_y, height):
     fig = plt.figure(figsize=(6, 4))
     ax = fig.add_subplot(111, projection='3d')
     for i in range(count_x):
@@ -125,7 +126,7 @@ def draw_3d_layer(width, depth, count_x, count_y):
             x = i * width
             y = j * depth
             z = 0
-            dx, dy, dz = width, depth, 1
+            dx, dy, dz = width, depth, height
             ax.bar3d(x, y, z, dx, dy, dz, shade=True, alpha=0.6)
     ax.set_title(L["viz_title"])
     ax.set_xlabel("Šířka")
@@ -133,7 +134,13 @@ def draw_3d_layer(width, depth, count_x, count_y):
     ax.set_zlabel("Výška")
     return fig
 
+if 'run_calculation' not in st.session_state:
+    st.session_state.run_calculation = False
+
 if st.button(L["run"]):
+    st.session_state.run_calculation = True
+
+if st.session_state.run_calculation:
     df_result = pd.DataFrame(generate_packing_options(retail_width, retail_depth, retail_height, master_width, master_depth, master_height))
 
     if not df_result.empty:
@@ -153,8 +160,7 @@ if st.button(L["run"]):
         st.dataframe(df_result)
 
         counts = list(map(int, best["Rozložení počtu"].split("x")))
-        fig = draw_3d_layer(master_width, master_depth, counts[0], counts[1])
+        fig = draw_3d_layer(master_width, master_depth, counts[0], counts[1], master_height)
         st.pyplot(fig)
-
     else:
         st.error(L["error"])
