@@ -1,6 +1,4 @@
 
-# ⚙️ Carton Optimizer - Full Final Version with fixed Z-axis and persistent toggle behavior
-
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -9,11 +7,11 @@ from itertools import product, combinations
 
 LANGUAGES = ["Čeština", "English"]
 DEFAULT_LANG = LANGUAGES[0]
-lang = st.sidebar.selectbox("🌐 Jazyk / Language", LANGUAGES)
+lang = st.sidebar.selectbox("Jazyk / Language", LANGUAGES)
 
 T = {
     "Čeština": {
-        "title": "🧮 Optimalizace balení",
+        "title": "Optimalizace balení",
         "description": "Zadej rozměry retail balení, master kartonu a palety.",
         "product": "Název produktu nebo zákazníka",
         "retail_w": "Šířka retail krabičky (mm)",
@@ -27,7 +25,7 @@ T = {
         "pallet_d": "Max. hloubka palety (mm)",
         "pallet_h": "Max. výška palety (mm)",
         "run": "Spustit výpočet",
-        "reset": "🔄 Nový výpočet",
+        "reset": "Nový výpočet",
         "best": "Nejlepší varianta",
         "pallet_summary": "Na paletu se vejde {m} master kartonů → {r} retail krabiček",
         "show_unused": "Zobrazit nevyužitý prostor",
@@ -36,7 +34,7 @@ T = {
         "error": "Retail balení je větší než master karton – nelze vložit."
     },
     "English": {
-        "title": "🧮 Packaging Optimization",
+        "title": "Packaging Optimization",
         "description": "Enter dimensions of retail, master carton and pallet.",
         "product": "Product or customer name",
         "retail_w": "Retail box width (mm)",
@@ -50,7 +48,7 @@ T = {
         "pallet_d": "Max pallet depth (mm)",
         "pallet_h": "Max pallet height (mm)",
         "run": "Run calculation",
-        "reset": "🔄 New calculation",
+        "reset": "New calculation",
         "best": "Best variant",
         "pallet_summary": "Pallet fits {m} master cartons → {r} retail boxes",
         "show_unused": "Show unused space",
@@ -64,11 +62,9 @@ L = T.get(lang, T[DEFAULT_LANG])
 product_name = st.sidebar.text_input(L["product"], value="produkt")
 
 st.title(L["title"])
-col_reset = st.columns([8, 2])[1]
-with col_reset:
-    if st.button(L["reset"]):
-        st.cache_data.clear()
-        st.rerun()
+if st.button(L["reset"]):
+    st.cache_data.clear()
+    st.rerun()
 
 st.markdown(L["description"])
 
@@ -121,9 +117,7 @@ if st.session_state.best_result:
     for x in range(nx):
         for y in range(ny):
             for z in range(nz):
-                ax1.bar3d(x*retail_width, y*retail_depth, z*retail_height,
-                          retail_width, retail_depth, retail_height,
-                          color='skyblue', edgecolor='k', alpha=0.9)
+                ax1.bar3d(x*retail_width, y*retail_depth, z*retail_height, retail_width, retail_depth, retail_height, color='skyblue', edgecolor='k', alpha=0.9)
     if show_unused:
         w, d, h = retail_width*nx, retail_depth*ny, retail_height*nz
         r = [[0, w], [0, d], [0, h]]
@@ -147,9 +141,7 @@ if st.session_state.best_result:
     for z in range(layers):
         for x in range(per_row):
             for y in range(per_col):
-                ax2.bar3d(x*master_width, y*master_depth, z*master_height,
-                          master_width, master_depth, master_height,
-                          color='orange', edgecolor='k', alpha=0.8)
+                ax2.bar3d(x*master_width, y*master_depth, z*master_height, master_width, master_depth, master_height, color='orange', edgecolor='k', alpha=0.8)
     ax2.set_xlim(0, pallet_width)
     ax2.set_ylim(0, pallet_depth)
     ax2.set_zlim(0, pallet_height)
