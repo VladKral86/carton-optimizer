@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from itertools import product, combinations
+from itertools import product
 
 # Jazykové přepínání
 LANGUAGES = ["Čeština", "English"]
@@ -86,11 +86,10 @@ with col2:
     pallet_depth = st.number_input(L["pallet_d"], min_value=1, value=800)
     pallet_height = st.number_input(L["pallet_h"], min_value=1, value=1800)
 
+# Výpočet nejlepšího layoutu retail balení v kartonu
 def calculate_retail_fit_in_carton(rw, rd, rh, mw, md, mh):
-    # Získáme všechny možné rotace retail balení
     orientations = list(product([rw, rd, rh], repeat=3))
     orientations = [o for o in orientations if len(set(o)) == 3]
-
     best_fit = None
     max_count = 0
     for w, d, h in orientations:
@@ -101,10 +100,9 @@ def calculate_retail_fit_in_carton(rw, rd, rh, mw, md, mh):
         if total > max_count:
             max_count = total
             best_fit = (count_w, count_d, count_h, w, d, h)
-
     return best_fit, max_count
 
-# Výpočet rozměrů retail balení v kartonu
+# Hlavní výpočet
 best_fit, max_count = calculate_retail_fit_in_carton(
     retail_width, retail_depth, retail_height,
     master_width, master_depth, master_height
@@ -112,108 +110,73 @@ best_fit, max_count = calculate_retail_fit_in_carton(
 
 if best_fit:
     count_w, count_d, count_h, rw_final, rd_final, rh_final = best_fit
-    st.success(f"Retail krabiček v kartonu: {max_count} ({count_w}x{count_d}x{count_h})")
-
-    # Výpočet počtu master kartonů na paletu
-    st.subheader(L["layout_pallet"])
-
-    show_unused = st.checkbox(L["show_unused"], value=False)
-
-    fig2 = plt.figure(figsize=(7, 6))
-    ax2 = fig2.add_subplot(111, projection='3d')
-    for x in range(count_x):
-        for y in range(count_y):
-            for z in range(count_z):
-                ax2.bar3d(
-                    x * master_width,
-                    y * master_depth,
-                    z * master_height,
-                    master_width, master_depth, master_height,
-                    alpha=0.6, color='orange', edgecolor='black')
-
-    if show_unused:
-        # Vykreslíme šedé okraje kolem palety – nevyužitý prostor
-        x_max = count_x * master_width
-        y_max = count_y * master_depth
-        z_max = count_z * master_height
-        ax2.plot([0, pallet_width], [0, 0], [0, 0], color='gray', linestyle='dotted')
-        ax2.plot([0, 0], [0, pallet_depth], [0, 0], color='gray', linestyle='dotted')
-        ax2.plot([0, 0], [0, 0], [0, pallet_height], color='gray', linestyle='dotted')
-        ax2.plot([0, pallet_width], [pallet_depth, pallet_depth], [pallet_height, pallet_height], color='gray', linestyle='dotted')
-
-    ax2.set_xlabel('Šířka (mm)')
-    ax2.set_ylabel('Hloubka (mm)')
-    ax2.set_zlabel('Výška (mm)')
-    ax2.set_xlim([0, pallet_width])
-    ax2.set_ylim([0, pallet_depth])
-    ax2.set_zlim([0, pallet_height])
-    if show_unused:
-    # Vizuálně znázornit nevyužitý prostor mřížkou
-    for x in np.arange(count_x * master_width, pallet_width, master_width):
-        for y in np.arange(0, pallet_depth, master_depth):
-            for z in np.arange(0, pallet_height, master_height):
-                ax2.bar3d(x, y, z, master_width, master_depth, master_height,
-                          alpha=0.1, color='gray', edgecolor='lightgray')
-    for x in np.arange(0, pallet_width, master_width):
-        for y in np.arange(count_y * master_depth, pallet_depth, master_depth):
-            for z in np.arange(0, pallet_height, master_height):
-                ax2.bar3d(x, y, z, master_width, master_depth, master_height,
-                          alpha=0.1, color='gray', edgecolor='lightgray')
-    for x in np.arange(0, pallet_width, master_width):
-        for y in np.arange(0, pallet_depth, master_depth):
-            for z in np.arange(count_z * master_height, pallet_height, master_height):
-                ax2.bar3d(x, y, z, master_width, master_depth, master_height,
-                          alpha=0.1, color='gray', edgecolor='lightgray')
-
-ax2.set_title(L["layout_pallet"])
-    st.pyplot(fig2)
-
-    #
-    st.subheader(L["layout_box"])
-    fig = plt.figure(figsize=(6, 5))
-    ax = fig.add_subplot(111, projection='3d')
-    for x in range(count_w):
-        for y in range(count_d):
-            for z in range(count_h):
-                ax.bar3d(
-                    x * rw_final,
-                    y * rd_final,
-                    z * rh_final,
-                    rw_final, rd_final, rh_final,
-                    alpha=0.6, color='skyblue', edgecolor='gray')
-    ax.set_xlabel('Šířka (mm)')
-    ax.set_ylabel('Hloubka (mm)')
-    ax.set_zlabel('Výška (mm)')
-    ax.set_xlim([0, master_width])
-    ax.set_ylim([0, master_depth])
-    ax.set_zlim([0, master_height])
-    if show_unused:
-    for x in np.arange(count_w * rw_final, master_width, rw_final):
-        for y in np.arange(0, master_depth, rd_final):
-            for z in np.arange(0, master_height, rh_final):
-                ax.bar3d(x, y, z, rw_final, rd_final, rh_final,
-                         alpha=0.1, color='gray', edgecolor='lightgray')
-    for x in np.arange(0, master_width, rw_final):
-        for y in np.arange(count_d * rd_final, master_depth, rd_final):
-            for z in np.arange(0, master_height, rh_final):
-                ax.bar3d(x, y, z, rw_final, rd_final, rh_final,
-                         alpha=0.1, color='gray', edgecolor='lightgray')
-    for x in np.arange(0, master_width, rw_final):
-        for y in np.arange(0, master_depth, rd_final):
-            for z in np.arange(count_h * rh_final, master_height, rh_final):
-                ax.bar3d(x, y, z, rw_final, rd_final, rh_final,
-                         alpha=0.1, color='gray', edgecolor='lightgray')
-
-ax.set_title(L["layout_box"])
-    st.pyplot(fig)
-
-    #
     count_x = pallet_width // master_width
     count_y = pallet_depth // master_depth
     count_z = pallet_height // master_height
     total_master_cartons = count_x * count_y * count_z
     total_retail_boxes = total_master_cartons * max_count
 
+    st.success(f"Retail krabiček v kartonu: {max_count} ({count_w}x{count_d}x{count_h})")
     st.info(L["pallet_summary"].format(m=total_master_cartons, r=total_retail_boxes))
+
+    show_unused = st.checkbox(L["show_unused"], value=False)
+
+    st.subheader(L["layout_box"])
+    fig = plt.figure(figsize=(6, 5))
+    ax = fig.add_subplot(111, projection='3d')
+    for x in range(count_w):
+        for y in range(count_d):
+            for z in range(count_h):
+                ax.bar3d(x * rw_final, y * rd_final, z * rh_final, rw_final, rd_final, rh_final, alpha=0.6, color='skyblue', edgecolor='gray')
+    if show_unused:
+        for x in np.arange(count_w * rw_final, master_width, rw_final):
+            for y in np.arange(0, master_depth, rd_final):
+                for z in np.arange(0, master_height, rh_final):
+                    ax.bar3d(x, y, z, rw_final, rd_final, rh_final, alpha=0.1, color='gray', edgecolor='lightgray')
+        for x in np.arange(0, master_width, rw_final):
+            for y in np.arange(count_d * rd_final, master_depth, rd_final):
+                for z in np.arange(0, master_height, rh_final):
+                    ax.bar3d(x, y, z, rw_final, rd_final, rh_final, alpha=0.1, color='gray', edgecolor='lightgray')
+        for x in np.arange(0, master_width, rw_final):
+            for y in np.arange(0, master_depth, rd_final):
+                for z in np.arange(count_h * rh_final, master_height, rh_final):
+                    ax.bar3d(x, y, z, rw_final, rd_final, rh_final, alpha=0.1, color='gray', edgecolor='lightgray')
+    ax.set_xlim([0, master_width])
+    ax.set_ylim([0, master_depth])
+    ax.set_zlim([0, master_height])
+    ax.set_xlabel("Šířka (mm)")
+    ax.set_ylabel("Hloubka (mm)")
+    ax.set_zlabel("Výška (mm)")
+    ax.set_title(L["layout_box"])
+    st.pyplot(fig)
+
+    st.subheader(L["layout_pallet"])
+    fig2 = plt.figure(figsize=(7, 6))
+    ax2 = fig2.add_subplot(111, projection='3d')
+    for x in range(count_x):
+        for y in range(count_y):
+            for z in range(count_z):
+                ax2.bar3d(x * master_width, y * master_depth, z * master_height, master_width, master_depth, master_height, alpha=0.6, color='orange', edgecolor='black')
+    if show_unused:
+        for x in np.arange(count_x * master_width, pallet_width, master_width):
+            for y in np.arange(0, pallet_depth, master_depth):
+                for z in np.arange(0, pallet_height, master_height):
+                    ax2.bar3d(x, y, z, master_width, master_depth, master_height, alpha=0.1, color='gray', edgecolor='lightgray')
+        for x in np.arange(0, pallet_width, master_width):
+            for y in np.arange(count_y * master_depth, pallet_depth, master_depth):
+                for z in np.arange(0, pallet_height, master_height):
+                    ax2.bar3d(x, y, z, master_width, master_depth, master_height, alpha=0.1, color='gray', edgecolor='lightgray')
+        for x in np.arange(0, pallet_width, master_width):
+            for y in np.arange(0, pallet_depth, master_depth):
+                for z in np.arange(count_z * master_height, pallet_height, master_height):
+                    ax2.bar3d(x, y, z, master_width, master_depth, master_height, alpha=0.1, color='gray', edgecolor='lightgray')
+    ax2.set_xlim([0, pallet_width])
+    ax2.set_ylim([0, pallet_depth])
+    ax2.set_zlim([0, pallet_height])
+    ax2.set_xlabel("Šířka (mm)")
+    ax2.set_ylabel("Hloubka (mm)")
+    ax2.set_zlabel("Výška (mm)")
+    ax2.set_title(L["layout_pallet"])
+    st.pyplot(fig2)
 else:
     st.error(L["error"])
