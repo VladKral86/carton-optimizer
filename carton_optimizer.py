@@ -1,4 +1,4 @@
-import streamlit as st
+""import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,11 +7,11 @@ from itertools import permutations
 # Jazykové přepínání
 LANGUAGES = ["Čeština", "English"]
 DEFAULT_LANG = LANGUAGES[0]
-lang = st.sidebar.selectbox("\ud83c\udf10 Jazyk / Language", LANGUAGES)
+lang = st.sidebar.selectbox("\U0001F310 Jazyk / Language", LANGUAGES)
 
 T = {
     "Čeština": {
-        "title": "\ud83e\uddae Optimalizace balení",
+        "title": "\U0001F9EE Optimalizace balení",
         "description": "Zadej rozměry retail balení, master kartonu a palety...",
         "product": "Název produktu nebo zákazníka",
         "retail_w": "Šířka retail krabičky (mm)",
@@ -25,7 +25,7 @@ T = {
         "pallet_d": "Max. hloubka palety (mm)",
         "pallet_h": "Max. výška palety (mm)",
         "run": "Spustit výpočet",
-        "reset": "\ud83d\udd04 Nový výpočet",
+        "reset": "\U0001F504 Nový výpočet",
         "best": "Nejlepší varianta",
         "pallet_summary": "Na paletu se vejde {m} master kartonů → {r} retail krabiček",
         "show_unused": "Zobrazit nevyužitý prostor",
@@ -34,7 +34,7 @@ T = {
         "error": "Retail balení je větší než master karton – nelze vložit."
     },
     "English": {
-        "title": "\ud83e\uddae Packaging Optimization",
+        "title": "\U0001F9EE Packaging Optimization",
         "description": "Enter dimensions of retail, master carton and pallet...",
         "product": "Product or customer name",
         "retail_w": "Retail box width (mm)",
@@ -48,7 +48,7 @@ T = {
         "pallet_d": "Max pallet depth (mm)",
         "pallet_h": "Max pallet height (mm)",
         "run": "Run calculation",
-        "reset": "\ud83d\udd04 New calculation",
+        "reset": "\U0001F504 New calculation",
         "best": "Best variant",
         "pallet_summary": "Pallet fits {m} master cartons → {r} retail boxes",
         "show_unused": "Show unused space",
@@ -112,11 +112,10 @@ carton_fit, carton_total = calculate_best_fit(
 total_retail = retail_total * carton_total
 
 if retail_fit and carton_fit:
-    rw, rd, rh = retail_fit[3]
-    cx, cy, cz = carton_fit[0], carton_fit[1], carton_fit[2]
-    mw, md, mh = carton_fit[3]
+    (rx, ry, rz), (rw, rd, rh) = retail_fit[:3], retail_fit[3]
+    (cx, cy, cz), (mw, md, mh) = carton_fit[:3], carton_fit[3]
 
-    st.success(f"Retail krabiček v kartonu: {retail_total} ({retail_fit[0]}x{retail_fit[1]}x{retail_fit[2]})")
+    st.success(f"Retail krabiček v kartonu: {retail_total} ({rx}x{ry}x{rz})")
     st.info(L["pallet_summary"].format(m=carton_total, r=total_retail))
 
     show_unused = st.checkbox(L["show_unused"], value=False)
@@ -124,20 +123,20 @@ if retail_fit and carton_fit:
     st.subheader(L["layout_box"])
     fig = plt.figure(figsize=(6, 5))
     ax = fig.add_subplot(111, projection='3d')
-    for x in range(retail_fit[0]):
-        for y in range(retail_fit[1]):
-            for z in range(retail_fit[2]):
+    for x in range(rx):
+        for y in range(ry):
+            for z in range(rz):
                 ax.bar3d(x * rw, y * rd, z * rh, rw, rd, rh, alpha=0.6, color='skyblue', edgecolor='gray')
     if show_unused:
-        unused_x = master_width - (retail_fit[0] * rw)
-        unused_y = master_depth - (retail_fit[1] * rd)
-        unused_z = master_height - (retail_fit[2] * rh)
+        unused_x = master_width - (rx * rw)
+        unused_y = master_depth - (ry * rd)
+        unused_z = master_height - (rz * rh)
         if unused_x > 0:
-            ax.bar3d(retail_fit[0]*rw, 0, 0, unused_x, master_depth, master_height, alpha=0.1, color='gray')
+            ax.bar3d(rx * rw, 0, 0, unused_x, master_depth, master_height, alpha=0.1, color='gray')
         if unused_y > 0:
-            ax.bar3d(0, retail_fit[1]*rd, 0, master_width, unused_y, master_height, alpha=0.1, color='gray')
+            ax.bar3d(0, ry * rd, 0, master_width, unused_y, master_height, alpha=0.1, color='gray')
         if unused_z > 0:
-            ax.bar3d(0, 0, retail_fit[2]*rh, master_width, master_depth, unused_z, alpha=0.1, color='gray')
+            ax.bar3d(0, 0, rz * rh, master_width, master_depth, unused_z, alpha=0.1, color='gray')
     ax.set_xlim([0, master_width])
     ax.set_ylim([0, master_depth])
     ax.set_zlim([0, master_height])
