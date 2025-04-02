@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from itertools import product
+from itertools import permutations
 
 # Jazykové přepínání
 LANGUAGES = ["Čeština", "English"]
@@ -86,61 +86,51 @@ with col2:
     pallet_depth = st.number_input(L["pallet_d"], min_value=1, value=800)
     pallet_height = st.number_input(L["pallet_h"], min_value=1, value=1800)
 
-# Výpočet nejlepšího layoutu retail balení v kartonu
-def calculate_retail_fit_in_carton(rw, rd, rh, mw, md, mh):
-    orientations = list(product([rw, rd, rh], repeat=3))
-    orientations = [o for o in orientations if len(set(o)) == 3]
-    best_fit = None
-    max_count = 0
-    for w, d, h in orientations:
-        count_w = mw // w
-        count_d = md // d
-        count_h = mh // h
-        total = count_w * count_d * count_h
-        if total > max_count:
-            max_count = total
-            best_fit = (count_w, count_d, count_h, w, d, h)
-    return best_fit, max_count
+# Funkce pro nejlepší rotaci krabiček
 
-# Hlavní výpočet
-best_fit, max_count = calculate_retail_fit_in_carton(
-    retail_width, retail_depth, retail_height,
-    master_width, master_depth, master_height
+def calculate_best_fit(product_dims, container_dims):
+    max_units = 0
+    best_fit = None
+    for orientation in permutations(product_dims):
+        fits_x = container_dims[0] // orientation[0]
+        fits_y = container_dims[1] // orientation[1]
+        fits_z = container_dims[2] // orientation[2]
+        total = fits_x * fits_y * fits_z
+        if total > max_units:
+            max_units = total
+            best_fit = (fits_x, fits_y, fits_z, orientation)
+    return best_fit, max_units
+
+# Výpočty
+retail_fit, retail_total = calculate_best_fit(
+    (retail_width, retail_depth, retail_height),
+    (master_width, master_depth, master_height)
 )
 
-if best_fit:
-    count_w, count_d, count_h, rw_final, rd_final, rh_final = best_fit
-    count_x = pallet_width // master_width
-    count_y = pallet_depth // master_depth
-    count_z = pallet_height // master_height
-    total_master_cartons = count_x * count_y * count_z
-    total_retail_boxes = total_master_cartons * max_count
+carton_fit, carton_total = calculate_best_fit(
+    (master_width, master_depth, master_height),
+    (pallet_width, pallet_depth, pallet_height)
+)
 
-    st.success(f"Retail krabiček v kartonu: {max_count} ({count_w}x{count_d}x{count_h})")
-    st.info(L["pallet_summary"].format(m=total_master_cartons, r=total_retail_boxes))
+total_retail = retail_total * carton_total
+
+if retail_fit and carton_fit:
+    rw, rd, rh = retail_fit[3]
+    mw, md, mh = master_width, master_depth, master_height
+    cw, cd, ch = carton_fit[0], carton_fit[1], carton_fit[2]
+
+    st.success(f"Retail krabiček v kartonu: {retail_total} ({retail_fit[0]}x{retail_fit[1]}x{retail_fit[2]})")
+    st.info(L["pallet_summary"].format(m=carton_total, r=total_retail))
 
     show_unused = st.checkbox(L["show_unused"], value=False)
 
     st.subheader(L["layout_box"])
     fig = plt.figure(figsize=(6, 5))
     ax = fig.add_subplot(111, projection='3d')
-    for x in range(count_w):
-        for y in range(count_d):
-            for z in range(count_h):
-                ax.bar3d(x * rw_final, y * rd_final, z * rh_final, rw_final, rd_final, rh_final, alpha=0.6, color='skyblue', edgecolor='gray')
-    if show_unused:
-        for x in np.arange(count_w * rw_final, master_width, rw_final):
-            for y in np.arange(0, master_depth, rd_final):
-                for z in np.arange(0, master_height, rh_final):
-                    ax.bar3d(x, y, z, rw_final, rd_final, rh_final, alpha=0.1, color='gray', edgecolor='lightgray')
-        for x in np.arange(0, master_width, rw_final):
-            for y in np.arange(count_d * rd_final, master_depth, rd_final):
-                for z in np.arange(0, master_height, rh_final):
-                    ax.bar3d(x, y, z, rw_final, rd_final, rh_final, alpha=0.1, color='gray', edgecolor='lightgray')
-        for x in np.arange(0, master_width, rw_final):
-            for y in np.arange(0, master_depth, rd_final):
-                for z in np.arange(count_h * rh_final, master_height, rh_final):
-                    ax.bar3d(x, y, z, rw_final, rd_final, rh_final, alpha=0.1, color='gray', edgecolor='lightgray')
+    for x in range(retail_fit[0]):
+        for y in range(retail_fit[1]):
+            for z in range(retail_fit[2]):
+                ax.bar3d(x * rw, y * rd, z * rh, rw, rd, rh, alpha=0.6, color='skyblue', edgecolor='gray')
     ax.set_xlim([0, master_width])
     ax.set_ylim([0, master_depth])
     ax.set_zlim([0, master_height])
@@ -153,23 +143,10 @@ if best_fit:
     st.subheader(L["layout_pallet"])
     fig2 = plt.figure(figsize=(7, 6))
     ax2 = fig2.add_subplot(111, projection='3d')
-    for x in range(count_x):
-        for y in range(count_y):
-            for z in range(count_z):
-                ax2.bar3d(x * master_width, y * master_depth, z * master_height, master_width, master_depth, master_height, alpha=0.6, color='orange', edgecolor='black')
-    if show_unused:
-        for x in np.arange(count_x * master_width, pallet_width, master_width):
-            for y in np.arange(0, pallet_depth, master_depth):
-                for z in np.arange(0, pallet_height, master_height):
-                    ax2.bar3d(x, y, z, master_width, master_depth, master_height, alpha=0.1, color='gray', edgecolor='lightgray')
-        for x in np.arange(0, pallet_width, master_width):
-            for y in np.arange(count_y * master_depth, pallet_depth, master_depth):
-                for z in np.arange(0, pallet_height, master_height):
-                    ax2.bar3d(x, y, z, master_width, master_depth, master_height, alpha=0.1, color='gray', edgecolor='lightgray')
-        for x in np.arange(0, pallet_width, master_width):
-            for y in np.arange(0, pallet_depth, master_depth):
-                for z in np.arange(count_z * master_height, pallet_height, master_height):
-                    ax2.bar3d(x, y, z, master_width, master_depth, master_height, alpha=0.1, color='gray', edgecolor='lightgray')
+    for x in range(cw):
+        for y in range(cd):
+            for z in range(ch):
+                ax2.bar3d(x * mw, y * md, z * mh, mw, md, mh, alpha=0.6, color='orange', edgecolor='black')
     ax2.set_xlim([0, pallet_width])
     ax2.set_ylim([0, pallet_depth])
     ax2.set_zlim([0, pallet_height])
