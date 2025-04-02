@@ -40,7 +40,7 @@ T = {
         "best": "Nejlepší varianta",
         "pallet_summary": "Na paletu se vejde {m} master kartonů → {r} retail krabiček",
         "error": "Retail balení je větší než master karton – nelze vložit.",
-        "viz_title": "Rozložení master kartonů na paletě (1 vrstva)"
+        "viz_title": "Rozložení master kartonů na paletě (všechny vrstvy)"
     },
     "English": {
         "title": "🧮 Packaging Optimization",
@@ -63,7 +63,7 @@ T = {
         "best": "Best variant",
         "pallet_summary": "Pallet fits {m} master cartons → {r} retail boxes",
         "error": "Retail box is larger than master carton – cannot fit.",
-        "viz_title": "Master carton layout on pallet (1 layer)"
+        "viz_title": "Master carton layout on pallet (all layers)"
     }
 }
 
@@ -80,6 +80,7 @@ col_reset = st.columns([8, 2])[1]
 with col_reset:
     if st.button(L["reset"]):
         st.cache_data.clear()
+        st.session_state.clear()
         st.rerun()
 
 st.markdown(L["description"])
@@ -117,16 +118,17 @@ def generate_packing_options(rw, rd, rh, mw, md, mh):
                     index += 1
     return options
 
-def draw_3d_layer(width, depth, count_x, count_y, height):
-    fig = plt.figure(figsize=(6, 4))
+def draw_3d_pallet(width, depth, height, count_x, count_y, count_z):
+    fig = plt.figure(figsize=(7, 6))
     ax = fig.add_subplot(111, projection='3d')
     for i in range(count_x):
         for j in range(count_y):
-            x = i * width
-            y = j * depth
-            z = 0
-            dx, dy, dz = width, depth, height
-            ax.bar3d(x, y, z, dx, dy, dz, shade=True, alpha=0.6)
+            for k in range(count_z):
+                x = i * width
+                y = j * depth
+                z = k * height
+                dx, dy, dz = width, depth, height
+                ax.bar3d(x, y, z, dx, dy, dz, shade=True, alpha=0.6)
     ax.set_title(L["viz_title"])
     ax.set_xlabel("Šířka")
     ax.set_ylabel("Hloubka")
@@ -145,6 +147,8 @@ if st.session_state.run_calculation:
     if not df_result.empty:
         df_result = df_result.sort_values(by="Celkem krabiček", ascending=False).reset_index(drop=True)
         best = df_result.iloc[0].to_dict()
+        st.session_state.best_result = best
+
         computed_master_weight = (best['Celkem krabiček'] * retail_weight) / 1000
 
         master_per_layer = (pallet_width // master_width) * (pallet_depth // master_depth)
@@ -159,7 +163,7 @@ if st.session_state.run_calculation:
         st.dataframe(df_result)
 
         counts = list(map(int, best["Rozložení počtu"].split("x")))
-        fig = draw_3d_layer(master_width, master_depth, counts[0], counts[1], master_height)
+        fig = draw_3d_pallet(master_width, master_depth, master_height, pallet_width // master_width, pallet_depth // master_depth, layers_on_pallet)
         st.pyplot(fig)
     else:
         st.error(L["error"])
