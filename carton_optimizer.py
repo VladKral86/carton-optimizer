@@ -1,23 +1,16 @@
 import streamlit as st
 import pandas as pd
-import math
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from io import BytesIO
-from fpdf import FPDF
-import tempfile
-import os
+import numpy as np
+from itertools import product, combinations
 from datetime import datetime
-import sys
 
 # Constants
 LANGUAGES = ["Čeština", "English"]
 DEFAULT_LANG = LANGUAGES[0]
 
-# Language toggle
 lang = st.sidebar.selectbox("🌐 Jazyk / Language", LANGUAGES)
 
-# Language dictionary
 T = {
     "Čeština": {
         "title": "🧮 Optimalizace balení",
@@ -33,14 +26,14 @@ T = {
         "pallet_w": "Max. šířka palety (mm)",
         "pallet_d": "Max. hloubka palety (mm)",
         "pallet_h": "Max. výška palety (mm)",
-        "weight": "Hmotnost 1 master kartonu (kg)",
-        "price": "Cena za 1 master karton (Kč)",
         "run": "Spustit výpočet",
         "reset": "🔄 Nový výpočet",
         "best": "Nejlepší varianta",
         "pallet_summary": "Na paletu se vejde {m} master kartonů → {r} retail krabiček",
-        "error": "Retail balení je větší než master karton – nelze vložit.",
-        "viz_title": "Rozložení master kartonů na paletě (všechny vrstvy)"
+        "show_unused": "Zobrazit nevyužitý prostor",
+        "layout_box": "Rozložení retail balení v master kartonu",
+        "layout_pallet": "Rozložení master kartonů na paletě",
+        "error": "Retail balení je větší než master karton – nelze vložit."
     },
     "English": {
         "title": "🧮 Packaging Optimization",
@@ -56,14 +49,14 @@ T = {
         "pallet_w": "Max pallet width (mm)",
         "pallet_d": "Max pallet depth (mm)",
         "pallet_h": "Max pallet height (mm)",
-        "weight": "Weight of 1 master carton (kg)",
-        "price": "Price per 1 master carton (CZK)",
         "run": "Run calculation",
         "reset": "🔄 New calculation",
         "best": "Best variant",
         "pallet_summary": "Pallet fits {m} master cartons → {r} retail boxes",
-        "error": "Retail box is larger than master carton – cannot fit.",
-        "viz_title": "Master carton layout on pallet (all layers)"
+        "show_unused": "Show unused space",
+        "layout_box": "Retail layout inside master carton",
+        "layout_pallet": "Master cartons layout on pallet",
+        "error": "Retail box is larger than master carton – cannot fit."
     }
 }
 
@@ -71,16 +64,11 @@ L = T.get(lang, T[DEFAULT_LANG])
 
 product_name = st.sidebar.text_input(L["product"], value="produkt")
 
-now_str = datetime.now().strftime("%Y%m%d_%H%M")
-name_clean = product_name.replace(" ", "_").replace("/", "-")
-file_prefix = f"baleni_{name_clean}_{now_str}"
-
 st.title(L["title"])
 col_reset = st.columns([8, 2])[1]
 with col_reset:
     if st.button(L["reset"]):
         st.cache_data.clear()
-        st.session_state.clear()
         st.rerun()
 
 st.markdown(L["description"])
@@ -101,6 +89,8 @@ with col2:
     pallet_depth = st.number_input(L["pallet_d"], min_value=1, value=800)
     pallet_height = st.number_input(L["pallet_h"], min_value=1, value=1800)
 
+show_unused = st.checkbox(L["show_unused"], value=True)
+
 def generate_packing_options(rw, rd, rh, mw, md, mh):
     options = []
     index = 0
@@ -111,59 +101,85 @@ def generate_packing_options(rw, rd, rh, mw, md, mh):
                     count = x * y * z
                     options.append({
                         "Varianta": f"V{index+1}",
-                        "Rozměry retail boxu": f"{rw}x{rd}x{rh}",
                         "Rozložení počtu": f"{x}x{y}x{z}",
                         "Celkem krabiček": count
                     })
                     index += 1
     return options
 
-def draw_3d_pallet(width, depth, height, count_x, count_y, count_z):
-    fig = plt.figure(figsize=(7, 6))
+def draw_boxes_in_master_carton(retail_size, layout_xyz, show_empty=True):
+    rw, rd, rh = retail_size
+    x_count, y_count, z_count = layout_xyz
+    total_width = rw * x_count
+    total_depth = rd * y_count
+    total_height = rh * z_count
+    fig = plt.figure(figsize=(7, 5))
     ax = fig.add_subplot(111, projection='3d')
-    for i in range(count_x):
-        for j in range(count_y):
-            for k in range(count_z):
-                x = i * width
-                y = j * depth
-                z = k * height
-                dx, dy, dz = width, depth, height
-                ax.bar3d(x, y, z, dx, dy, dz, shade=True, alpha=0.6)
-    ax.set_title(L["viz_title"])
+    for x in range(x_count):
+        for y in range(y_count):
+            for z in range(z_count):
+                ax.bar3d(x*rw, y*rd, z*rh, rw, rd, rh, color='skyblue', edgecolor='k', alpha=0.9)
+    if show_empty:
+        r = [[0, total_width], [0, total_depth], [0, total_height]]
+        for s, e in combinations(np.array(list(product(*r))), 2):
+            if np.sum(np.abs(s - e) == np.array([total_width, total_depth, total_height])) == 1:
+                ax.plot3D(*zip(s, e), color="gray", linewidth=1.2, alpha=0.5)
+    ax.set_xlim(0, total_width)
+    ax.set_ylim(0, total_depth)
+    ax.set_zlim(0, total_height)
     ax.set_xlabel("Šířka")
     ax.set_ylabel("Hloubka")
     ax.set_zlabel("Výška")
     return fig
 
-if 'run_calculation' not in st.session_state:
-    st.session_state.run_calculation = False
+def draw_cartons_on_pallet(pallet_size, carton_size, layer_count):
+    pw, pd, ph = pallet_size
+    cw, cd, ch = carton_size
+    fig = plt.figure(figsize=(8, 5))
+    ax = fig.add_subplot(111, projection='3d')
+    cartons_per_row = pw // cw
+    cartons_per_col = pd // cd
+    for layer in range(layer_count):
+        for i in range(cartons_per_row):
+            for j in range(cartons_per_col):
+                x = i * cw
+                y = j * cd
+                z = layer * ch
+                ax.bar3d(x, y, z, cw, cd, ch, color='orange', edgecolor='k', alpha=0.8)
+    ax.plot([0, pw, pw, 0, 0], [0, 0, pd, pd, 0], [0, 0, 0, 0, 0], color='red', linewidth=2)
+    ax.set_xlim(0, pw)
+    ax.set_ylim(0, pd)
+    ax.set_zlim(0, ph)
+    ax.set_xlabel("Šířka")
+    ax.set_ylabel("Hloubka")
+    ax.set_zlabel("Výška")
+    return fig
 
 if st.button(L["run"]):
-    st.session_state.run_calculation = True
-
-if st.session_state.run_calculation:
     df_result = pd.DataFrame(generate_packing_options(retail_width, retail_depth, retail_height, master_width, master_depth, master_height))
-
     if not df_result.empty:
-        df_result = df_result.sort_values(by="Celkem krabiček", ascending=False).reset_index(drop=True)
-        best = df_result.iloc[0].to_dict()
-        st.session_state.best_result = best
+        df_result = df_result.sort_values(by="Celkem krabiček", ascending=False)
+        best = df_result.iloc[0]
+        counts = best["Rozložení počtu"].split("x")
+        layout_xyz = (int(counts[0]), int(counts[1]), int(counts[2]))
 
-        computed_master_weight = (best['Celkem krabiček'] * retail_weight) / 1000
+        st.success(f"{L['best']}: {best['Varianta']} – {best['Celkem krabiček']} ks / master karton")
+        st.dataframe(df_result.reset_index(drop=True))
 
+        st.subheader(L["layout_box"])
+        fig1 = draw_boxes_in_master_carton((retail_width, retail_depth, retail_height), layout_xyz, show_unused)
+        st.pyplot(fig1)
+
+        st.subheader(L["layout_pallet"])
         master_per_layer = (pallet_width // master_width) * (pallet_depth // master_depth)
         layers_on_pallet = pallet_height // master_height
         total_on_pallet = master_per_layer * layers_on_pallet
-
         total_retail_on_pallet = int(best['Celkem krabiček']) * total_on_pallet
-        total_weight = computed_master_weight * total_on_pallet
-
-        st.success(f"{L['best']}: {best['Varianta']} – {best['Celkem krabiček']} ks / master karton")
         st.info(L["pallet_summary"].format(m=total_on_pallet, r=total_retail_on_pallet))
-        st.dataframe(df_result)
 
-        counts = list(map(int, best["Rozložení počtu"].split("x")))
-        fig = draw_3d_pallet(master_width, master_depth, master_height, pallet_width // master_width, pallet_depth // master_depth, layers_on_pallet)
-        st.pyplot(fig)
+        fig2 = draw_cartons_on_pallet((pallet_width, pallet_depth, pallet_height),
+                                      (master_width, master_depth, master_height),
+                                      layers_on_pallet)
+        st.pyplot(fig2)
     else:
         st.error(L["error"])
