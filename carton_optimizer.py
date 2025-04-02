@@ -86,7 +86,7 @@ with col2:
     pallet_depth = st.number_input(L["pallet_d"], min_value=1, value=800)
     pallet_height = st.number_input(L["pallet_h"], min_value=1, value=1800)
 
-# Funkce pro nejlepší rotaci krabiček
+# Funkce pro nejlepší rotaci krabiček nebo kartonů
 
 def calculate_best_fit(product_dims, container_dims):
     max_units = 0
@@ -116,8 +116,8 @@ total_retail = retail_total * carton_total
 
 if retail_fit and carton_fit:
     rw, rd, rh = retail_fit[3]
-    mw, md, mh = master_width, master_depth, master_height
     cw, cd, ch = carton_fit[0], carton_fit[1], carton_fit[2]
+    mw, md, mh = carton_fit[3]  # Opravené rozměry kartonu podle nejlepší orientace
 
     st.success(f"Retail krabiček v kartonu: {retail_total} ({retail_fit[0]}x{retail_fit[1]}x{retail_fit[2]})")
     st.info(L["pallet_summary"].format(m=carton_total, r=total_retail))
